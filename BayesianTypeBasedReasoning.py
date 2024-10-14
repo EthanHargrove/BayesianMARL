@@ -183,10 +183,10 @@ class BayesianTypeBasedReasoning(Player):
                         num_C += 1
                     else:
                         num_D += 1
-                    true_C_rate = num_C / self.num_iter
-                    obs_C_rate = true_C_rate * (1 - 2 * self.noise) + self.noise
-                    obs_D_rate = 1 - obs_C_rate
-                    action_probs[i, :] = (obs_C_rate, obs_D_rate)
+                true_C_rate = num_C / self.num_iter
+                obs_C_rate = true_C_rate * (1 - 2 * self.noise) + self.noise
+                obs_D_rate = 1 - obs_C_rate
+                action_probs[i, :] = (obs_C_rate, obs_D_rate)
             else:
                 action = poss_type.strategy(self)
                 action_probs[i, :] = (
