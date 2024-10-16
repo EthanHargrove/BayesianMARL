@@ -39,16 +39,16 @@ class BayesianTypeBasedReasoning(Player):
         Returns the action with the highest value of information.
         """
         if self._history and len(opponent.history) > 0:
-            self._update_prior(opponent)
+            self.prior = self._update_prior(self.prior, opponent.history)
             return (self.C, self.D)[
                 np.argmax(
-                    self._value_of_info(self._history, opponent.history, self.depth)
+                    self._value_of_info(self.prior, self._history, opponent.history, self.depth)
                 )
             ]
 
-        return (self.C, self.D)[np.argmax(self._value_of_info([], [], self.depth))]
+        return (self.C, self.D)[np.argmax(self._value_of_info(self.prior, [], [], self.depth))]
 
-    def _update_prior(self, opponent):
+    def _update_prior(self, prior, opponent_history):
         """
         Update our prior beilef of opponent's type based off their previous action.
         """
@@ -60,16 +60,16 @@ class BayesianTypeBasedReasoning(Player):
             self.history = axl.history.History(plays=[], coplays=[])
         else:
             self.history = axl.history.History(
-                plays=list(self._history)[:-1], coplays=list(opponent.history)[:-1]
+                plays=list(self._history)[:-1], coplays=list(opponent_history)[:-1]
             )
 
         # Loop through types and calculate the likelihood that they took the previous action
         for i, poss_type in enumerate(self.types):
             # Initialize the possible type and set its history
             poss_type = poss_type()
-            if len(list(opponent.history)) > 1:
+            if len(list(opponent_history)) > 1:
                 for play, coplay in zip(
-                    list(opponent.history)[:-1], list(self._history)
+                    list(opponent_history)[:-1], list(self._history)
                 ):
                     poss_type.update_history(play, coplay)
 
@@ -101,7 +101,7 @@ class BayesianTypeBasedReasoning(Player):
                         num_C += 1
                     else:
                         num_D += 1
-                if opponent.history[-1] == self.C:
+                if opponent_history[-1] == self.C:
                     true_C_rate = num_C / self.num_iter
                     likelihood[i] = true_C_rate * (1 - 2 * self.noise) + self.noise
                 else:
@@ -110,32 +110,29 @@ class BayesianTypeBasedReasoning(Player):
             # Get the likelihood for deterministic policies
             else:
                 action = poss_type.strategy(self)
-                # if i == 9:
-                #     print(f"my history = {self.history}")
-                #     print(f"poss_type.history = {poss_type.history}")
-                #     print(f"opponent action = {action}")
-                #     print("")
-                if action == opponent.history[-1]:
+                if action == opponent_history[-1]:
                     likelihood[i] = 1 - self.noise
                 else:
                     likelihood[i] = self.noise
 
         # Update the prior
-        self.prior *= likelihood
-        self.prior /= np.sum(self.prior)
+        # self.prior *= likelihood
+        # self.prior /= np.sum(self.prior)
 
         # Restore previous history
         self.history = self._old_history
 
-    def _value_of_info(self, bayes_history, opponent_history, depth):
-        action_probs = self._action_probabilities(bayes_history, opponent_history)
-        action_values = self._action_values(bayes_history, opponent_history, depth - 1)
-        value_of_info = self.prior @ action_probs @ action_values
+        posterior = likelihood * prior
+        posterior /= np.sum(posterior)
 
-        # if depth == self.depth:
-        #     print(f"prior = {self.prior}")
-        #     print(f"action_probs = {action_probs}")
-        #     print(f"action_values = {action_values}")
+        return posterior
+
+    def _value_of_info(self, prior, bayes_history, opponent_history, depth):
+        if depth != self.depth:
+            prior = self._update_prior(prior, opponent_history)
+        action_probs = self._action_probabilities(bayes_history, opponent_history)
+        action_values = self._action_values(prior, bayes_history, opponent_history, depth - 1)
+        value_of_info = prior @ action_probs @ action_values
 
         return value_of_info
 
@@ -199,28 +196,28 @@ class BayesianTypeBasedReasoning(Player):
 
         return action_probs
 
-    def _action_values(self, bayes_history, opponent_history, depth):
+    def _action_values(self, prior, bayes_history, opponent_history, depth):
         if depth == 0:
             return self.reward_matrix
 
         VOI_C_C = np.max(
             self._value_of_info(
-                list(bayes_history) + [self.C], list(opponent_history) + [self.C], depth
+                prior, list(bayes_history) + [self.C], list(opponent_history) + [self.C], depth
             )
         )
         VOI_C_D = np.max(
             self._value_of_info(
-                list(bayes_history) + [self.C], list(opponent_history) + [self.D], depth
+                prior, list(bayes_history) + [self.C], list(opponent_history) + [self.D], depth
             )
         )
         VOI_D_C = np.max(
             self._value_of_info(
-                list(bayes_history) + [self.D], list(opponent_history) + [self.C], depth
+                prior, list(bayes_history) + [self.D], list(opponent_history) + [self.C], depth
             )
         )
         VOI_D_D = np.max(
             self._value_of_info(
-                list(bayes_history) + [self.D], list(opponent_history) + [self.D], depth
+                prior, list(bayes_history) + [self.D], list(opponent_history) + [self.D], depth
             )
         )
 
